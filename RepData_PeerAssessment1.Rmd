@@ -1,0 +1,178 @@
+---
+title: "Reproducible Research Project 1"
+output: html_document
+---
+
+##Data
+
+The data provided for use, is derived from a study whereupon a single individual wore a "personal activity monitoring device".  
+
+###Question 1: Loading and processing the data.  
+
+The data must be in the current working directory, so that it can be unzip and read into R.  
+```{r}
+unzip("activity.zip")
+originalData <- read.csv("activity.csv", colClasses=c("numeric", "Date", "numeric"))
+```
+
+Looking at the data to be familar with it.
+
+```{r}
+head(originalData)
+str(originalData)
+summary(originalData)
+```
+
+###Question 2:What is the mean total number of steps taken each days?  
+The question states any missing values in the data set can be ignored. From using the summary functions previously, it is already known that there are NA values within the steps variable, so these can be removed now.  
+
+```{r}
+data <- originalData[!(is.na(originalData$steps)),]
+```
+
+Aggregate function is used to separate each day and sum the steps,so that mean total number of steps for each day can be calculated.  
+
+```{r}
+totalStepsDay <- aggregate(steps ~ date,data,sum)
+head(totalStepsDay)
+```
+
+Creating exploratory plots are useful to be able to quickly see a view of all of the data, and pick out any potential patterns.  
+Here, a histogram is created to indicate the frequency of total steps taken each day.
+
+```{r}
+hist(totalStepsDay$steps, breaks=20, xlab="Number of Steps Taken", 
+     main="Histogram of the Total Number of Steps Taken per Day")
+```
+
+The summarise function can calculate the mean and median values of the total number of steps taken per day.
+
+```{r, message= FALSE}
+library(dplyr)
+totalStepsSummary <- summarise(totalStepsDay, meanOfTotalSteps=mean(totalStepsDay$steps),
+                               medianOfTotalSteps=median(totalStepsDay$steps))
+print(totalStepsSummary)
+```
+
+Therefore the mean value calculated is **10766.19**, and the median value **10765**.
+
+### Question 3: What is the average daily activity pattern?  
+
+```{r}
+meanStepsInterval <- aggregate(steps ~ interval, data, mean)
+head(meanStepsInterval)
+```
+
+The base R plotting system is used to create a time series plot, with each interval on the x axis, and the average steps data on the y axis.  
+
+```{r}
+plot(x=meanStepsInterval$interval, y=meanStepsInterval$steps, type="l",
+     main="Time Series Plot of Average Steps Taken per Interval",
+     ylab="Number of Steps", xlab="Intervals (in 5 mins)",
+     col="darkblue", lwd=1.5, family="serif")
+```
+
+The last part of this question asks "which five minute interval contains the maximum number of steps?" To answer this the max function can be used, which prints out the maximum value from a numeric vector.  
+
+```{r}
+meanStepsInterval[grep(max(meanStepsInterval$steps), meanStepsInterval$steps), ]
+```
+
+So the interval with the maximum number of steps is interval **835**.  
+
+### Question 4: Imputing missing values
+Find out in which columns there are NA values.  
+
+```{r}
+summary(originalData)
+```
+
+There are **2304** NAs in steps column and none in both interval and date column.  
+Therefore an imputing strategy must be devised to replace all of these missing values with usable numeric measurements. To do so, I decided to replace each missing value with the mean value for the same interval, averaged across all days.  
+
+I used a for loop to achieve this, first testing if each observation was an NA value, and if so, replacing it with the mean average for that interval, (as calculated in a previous question).  
+
+```{r}
+imputedData <- originalData
+for(x in 1:17568) {
+    if(is.na(imputedData[x, 1])==TRUE) {
+        imputedData[x, 1] <- meanStepsInterval[meanStepsInterval$interval %in% imputedData[x, 3], 2]
+    }
+}
+head(imputedData)
+```
+
+Now that the NA values have been replaced, a histogram from the imputed data can be created to indicate frequency of totla number of steps.  
+But first, we need to use aggregate function to group steps by days and sum them
+
+```{r}
+imputedTotalStepsDay <- aggregate(steps ~ date, imputedData, sum)
+head(imputedTotalStepsDay)
+```
+ 
+Create a histogram.
+
+```{r}
+hist(imputedTotalStepsDay$steps, xlab = "Number of steps taken",
+     main = "Histogram of total number of steps per day(with filled Missing Values)",
+     ylab = "Number of days")
+```
+
+Calculate mean and median using summarise function.  
+
+```{r}
+imputedStepsSummary <- summarise(imputedTotalStepsDay, 
+                                 meanOfTotalSteps=mean(imputedTotalStepsDay$steps), 
+                                 medianOfTotalSteps=median(imputedTotalStepsDay$steps))  
+print(imputedStepsSummary)
+```
+
+The mean of the total steps is **10766.19** and the median of the total steps is **10766.19**  
+
+Compared with the answers we got before imputing missing datas, the means are the same value because we use the mean to fill up the missing values.  
+For median values, the value after imputing missing values is a little bit higher.  
+
+### Question 5: Are there differences in activity patterns between weekdays and weekends?  
+Create a new dataset to separate weekdays and weekends.
+```{r}
+daysData <- imputedData
+daysData$days <- weekdays(daysData$date)
+daysData$weekday <- as.character(rep(0, times=17568))
+for(x in 1:17568) {
+    if(daysData[x, 4] %in% c("Saturday", "Sunday")) {
+        daysData[x, 5] <- "weekend"
+    } else {
+        daysData[x, 5] <- "weekday"
+    }
+}
+daysData$weekday <- factor(daysData$weekday)
+head(daysData)
+```
+
+To compare the weekday and weekend data, and create two plots of the average number of steps taken per interval, the data has to be split into two groups of weekday/weekend data, using the newly created variable.
+
+```{r}
+weekdayData <- daysData[daysData$weekday=="weekday", ]
+weekendData <- daysData[daysData$weekday=="weekend", ]
+```
+
+Average number of steps per interval is calculted using aggregate function.  
+
+```{r}
+weekdayMean <- aggregate(steps ~ interval, weekdayData, mean)
+weekendMean <- aggregate(steps ~ interval, weekendData, mean)
+```
+
+Create the plots to compare between them.
+
+```{r}
+par(mfrow=c(2, 1), mar=c(4, 4.1, 3, 2.1))
+plot(weekdayMean$interval, weekdayMean$steps, type="l",
+     main="Time Series Plot of Average Steps Taken per Interval, for Weekdays",
+     xlab="Intervals (in 5 mins)", ylab="Number of Steps", family="serif",
+     col="darkred", lwd=1.5, ylim=c(0, 230))
+plot(weekendMean$interval, weekendMean$steps, type="l",
+     main="Time Series Plot of Average Steps Taken per Interval, for Weekends",
+     xlab="Intervals (in 5 mins)", ylab="Number of Steps", family="serif",
+     col="darkblue", lwd=1.5, ylim=c(0, 230))
+```
